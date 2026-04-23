@@ -141,7 +141,7 @@ async function reportToSOC(text, violation, severity) {
 
     // 3. Report to Flask backend
     try {
-        await fetch("https://web-production-ba5b4.up.railway.app/log", {
+        await fetch("http://127.0.0.1:5000/log", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -297,7 +297,7 @@ async function scanImage(file) {
 
         const base64 = await fileToBase64(file);
 
-        const response = await fetch("https://web-production-ba5b4.up.railway.app/scan_image", {
+        const response = await fetch("http://127.0.0.1:5000/scan_image", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
