@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "GenAI Guard - DLP Agent",
+  "version": "1.0",
+  "description": "Real-time DLP agent that prevents sensitive data leakage on Generative AI platforms.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs",
+    "notifications"
+  ],
+  "host_permissions": [
+    "*://*.chatgpt.com/*",
+    "*://*.openai.com/*",
+    "*://*.gemini.google.com/*",
+    "*://*.google.com/*",
+    "*://*.claude.ai/*",
+    "*://*.copilot.microsoft.com/*",
+    "*://*.perplexity.ai/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://chatgpt.com/*",
+        "*://gemini.google.com/*",
+        "*://claude.ai/*",
+        "*://copilot.microsoft.com/*",
+        "*://perplexity.ai/*"
+      ],
+      "js": ["tesseract.min.js", "content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "worker.min.js",
+        "tesseract-core.wasm.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "GenAI Guard"
+  }
+}

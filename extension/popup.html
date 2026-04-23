@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GenAI Guard</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+
+        <!-- Header -->
+        <div class="header">
+            <h2>🛡️ GenAI Guard</h2>
+            <span class="badge active">● ACTIVE</span>
+        </div>
+
+        <!-- Status -->
+        <div class="status-box">
+            <p class="status">✅ DLP Agent Running</p>
+            <p class="desc">Monitoring ChatGPT, Gemini & Claude for sensitive data leaks.</p>
+        </div>
+
+        <!-- Live Stats -->
+        <div class="stats-row">
+            <div class="stat-card critical">
+                <span class="stat-num" id="count-critical">0</span>
+                <span class="stat-label">Critical</span>
+            </div>
+            <div class="stat-card high">
+                <span class="stat-num" id="count-high">0</span>
+                <span class="stat-label">High</span>
+            </div>
+            <div class="stat-card medium">
+                <span class="stat-num" id="count-medium">0</span>
+                <span class="stat-label">Medium</span>
+            </div>
+            <div class="stat-card low">
+                <span class="stat-num" id="count-low">0</span>
+                <span class="stat-label">Low</span>
+            </div>
+        </div>
+
+        <!-- Last Incident -->
+        <div class="last-incident">
+            <p class="incident-label">🕐 Last Incident</p>
+            <p class="incident-value" id="last-incident-text">None this session</p>
+        </div>
+
+        <!-- Warning Message -->
+        <div class="warning-box">
+            <p class="warning-text">🔒 Monitored by IT Security</p>
+            <p class="warning-desc">All violations are logged and reported to your security team.</p>
+        </div>
+
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

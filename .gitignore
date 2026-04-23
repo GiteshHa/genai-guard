@@ -1,0 +1,23 @@
+ # Environment variables
+backend/.env
+
+# Google credentials
+backend/google_vision_key.json
+
+# Database
+backend/audit_logs.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+.vscode/
+
+# Virtual environments
+venv/
+env/
+
+# Test files
+backend/test.py
