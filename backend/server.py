@@ -3,14 +3,17 @@ from flask_cors import CORS
 import sqlite3
 import os
 from datetime import datetime
-from dotenv import load_dotenv
 import smtplib
 import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Load environment variables
-load_dotenv()
+# Load .env only if running locally
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except:
+    pass
 
 app = Flask(__name__)
 CORS(app)
@@ -23,6 +26,11 @@ API_KEY  = os.getenv("SOC_API_KEY", "genai-guard-secret-2024")
 EMAIL_SENDER   = os.getenv("ALERT_EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("ALERT_EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("ALERT_EMAIL_RECEIVER")
+
+# Debug — print email config on startup
+print(f"📧 Email Sender: {EMAIL_SENDER}")
+print(f"📧 Email Receiver: {EMAIL_RECEIVER}")
+print(f"📧 Email Password set: {'Yes' if EMAIL_PASSWORD else 'No'}")
 
 # Google Vision credentials
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(
@@ -175,16 +183,11 @@ def scan_image():
     try:
         from google.cloud import vision
 
-        # Initialize Vision client
         client = vision.ImageAnnotatorClient()
-
-        # Decode base64 image
         image_data = base64.b64decode(data['image'])
         image      = vision.Image(content=image_data)
-
-        # Run OCR
-        response = client.text_detection(image=image)
-        texts    = response.text_annotations
+        response   = client.text_detection(image=image)
+        texts      = response.text_annotations
 
         if texts:
             extracted_text = texts[0].description
