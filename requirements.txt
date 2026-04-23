@@ -1,0 +1,6 @@
+flask
+flask-cors
+streamlit
+pandas
+python-dotenv
+google-cloud-vision
