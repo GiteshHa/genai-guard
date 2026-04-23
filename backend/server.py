@@ -109,7 +109,9 @@ def send_email_alert(entry):
         print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}")
 
     except Exception as e:
+        import traceback
         print(f"❌ Email Error: {e}")
+        print(f"❌ Full traceback: {traceback.format_exc()}")
 
 # --- MAIN LOGGING ENDPOINT ---
 @app.route('/log', methods=['POST'])
@@ -209,4 +211,4 @@ if __name__ == '__main__':
     print("📡 GenAI Guard SOC Server running on Port 5000...")
     print(f"🔑 API Key: {API_KEY}")
     port = int(os.getenv("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False) 
