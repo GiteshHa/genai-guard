@@ -232,7 +232,7 @@ function setupMutationObserver() {
 
 setupMutationObserver();
 
-// Standard input event (fallback for regular inputs)
+// Standard input event (fallback)
 document.addEventListener('input', (e) => {
     const tag        = e.target.tagName.toLowerCase();
     const isEditable = e.target.isContentEditable;
@@ -362,17 +362,32 @@ async function scanImage(file) {
     }
 }
 
-// File picker upload
+// File picker upload — IMMEDIATELY disable to prevent ChatGPT upload
 document.addEventListener('change', async (event) => {
     const target = event.target;
     if (target.type === 'file' && target.files?.length > 0) {
         const file = target.files[0];
         if (file.type.startsWith('image/')) {
+
+            // IMMEDIATELY block ChatGPT from getting the file
+            target.disabled = true;
+            event.stopImmediatePropagation();
+            event.preventDefault();
+
+            showScanningIndicator("🔍 Scanning image for sensitive data...");
             const threat = await scanImage(file);
+            hideScanningIndicator();
+
             if (threat) {
-                target.value = '';
-                event.stopImmediatePropagation();
+                // THREAT FOUND — keep blocked
+                target.value   = '';
+                target.disabled = false;
                 reportImageThreat("upload");
+            } else {
+                // SAFE — re-enable and allow upload
+                target.disabled = false;
+                const newEvent  = new Event('change', { bubbles: true });
+                target.dispatchEvent(newEvent);
             }
         }
     }
@@ -385,10 +400,11 @@ document.addEventListener('paste', async (event) => {
     for (const item of items) {
         if (item.type.startsWith('image/')) {
             const file = item.getAsFile();
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
             const threat = await scanImage(file);
             if (threat) {
-                event.preventDefault();
-                event.stopImmediatePropagation();
                 reportImageThreat("paste");
             }
             break;
@@ -402,10 +418,11 @@ document.addEventListener('drop', async (event) => {
     if (!files || files.length === 0) return;
     const file = files[0];
     if (file.type.startsWith('image/')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
         const threat = await scanImage(file);
         if (threat) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
             reportImageThreat("drop");
         }
     }
