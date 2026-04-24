@@ -205,22 +205,46 @@ function checkTextForThreats(text, source = "TEXT_INPUT") {
 // PART H: TEXT INPUT INTERCEPTION
 // ============================================
 
-// Real-time scanning as user types
+// MutationObserver for contenteditable divs (ChatGPT/Gemini)
+function setupMutationObserver() {
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            const target = mutation.target;
+            if (target.isContentEditable) {
+                const text = target.innerText || "";
+                const trimmedText = text.slice(-500);
+                if (trimmedText.length > 0) {
+                    console.log("📝 MutationObserver scanning:", trimmedText.slice(-50));
+                    checkTextForThreats(trimmedText, "TEXT_INPUT");
+                }
+            }
+        }
+    });
+
+    observer.observe(document.body, {
+        childList:     true,
+        subtree:       true,
+        characterData: true
+    });
+
+    console.log("👁️ MutationObserver active");
+}
+
+setupMutationObserver();
+
+// Standard input event (fallback for regular inputs)
 document.addEventListener('input', (e) => {
-    const tag      = e.target.tagName.toLowerCase();
+    const tag        = e.target.tagName.toLowerCase();
     const isEditable = e.target.isContentEditable;
-    const isInput  = tag === 'input' || tag === 'textarea';
+    const isInput    = tag === 'input' || tag === 'textarea';
 
     if (!isInput && !isEditable) return;
 
-    const text = e.target.value ||
-                 (isEditable ? e.target.innerText : "") || "";
-
-    // Only scan last 500 chars to avoid reading entire page
+    const text        = e.target.value ||
+                       (isEditable ? e.target.innerText : "") || "";
     const trimmedText = text.slice(-500);
 
-    console.log("📝 Scanning:", trimmedText.slice(-50));
-
+    console.log("📝 Input scanning:", trimmedText.slice(-50));
     checkTextForThreats(trimmedText, "TEXT_INPUT");
 }, true);
 
