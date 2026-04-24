@@ -22,7 +22,7 @@ const sensitivePatterns = [
     // MEDIUM
     { name: "Financial",   regex: /(salary|payroll|budget|revenue|\$\d{3,})/i,         severity: "MEDIUM" },
     { name: "Aadhaar",     regex: /\b[2-9]{1}\d{3}\s?\d{4}\s?\d{4}\b/,               severity: "MEDIUM" },
-    { name: "PAN Card",    regex: /[A-Z]{5}[0-9]{4}[A-Z]{1}/,                        severity: "MEDIUM" },
+    { name: "PAN Card",    regex: /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/,                    severity: "MEDIUM" },
 
     // LOW
     { name: "Email",       regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, severity: "LOW" },
@@ -97,7 +97,7 @@ async function getPublicIP() {
 function updatePopupCounter(violation, severity) {
     if (typeof chrome === 'undefined' || !chrome.storage) return;
     const sev = severity.toLowerCase();
-    chrome.storage.local.get(   
+    chrome.storage.local.get(
         ["threatCount", "critical", "high", "medium", "low"],
         (result) => {
             let update = {
@@ -139,7 +139,7 @@ async function reportToSOC(text, violation, severity) {
         publicIP = "Unavailable";
     }
 
-    // 3. Report to Flask backend
+    // 3. Report to Render backend
     try {
         await fetch("https://genai-guard.onrender.com/log", {
             method: "POST",
@@ -204,11 +204,27 @@ function checkTextForThreats(text, source = "TEXT_INPUT") {
 // ============================================
 // PART H: TEXT INPUT INTERCEPTION
 // ============================================
+
+// Real-time scanning as user types
 document.addEventListener('input', (e) => {
-    const text = e.target.value || e.target.innerText || "";
-    checkTextForThreats(text, "TEXT_INPUT");
+    const tag      = e.target.tagName.toLowerCase();
+    const isEditable = e.target.isContentEditable;
+    const isInput  = tag === 'input' || tag === 'textarea';
+
+    if (!isInput && !isEditable) return;
+
+    const text = e.target.value ||
+                 (isEditable ? e.target.innerText : "") || "";
+
+    // Only scan last 500 chars to avoid reading entire page
+    const trimmedText = text.slice(-500);
+
+    console.log("📝 Scanning:", trimmedText.slice(-50));
+
+    checkTextForThreats(trimmedText, "TEXT_INPUT");
 }, true);
 
+// Block Enter key if threat detected
 window.addEventListener('keydown', (e) => {
     if (e.key === "Enter" && isThreatDetected) {
         const text = e.target.value || e.target.innerText || "";
@@ -225,6 +241,7 @@ window.addEventListener('keydown', (e) => {
     }
 }, true);
 
+// Block submit button clicks on AI platforms
 document.addEventListener('click', (e) => {
     const btn = e.target.closest(
         'button[data-testid="send-button"], button[aria-label="Send message"], button[aria-label="Send"]'

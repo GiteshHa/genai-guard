@@ -1,6 +1,6 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
+import requests
 import os
 import time
 
@@ -11,21 +11,24 @@ st.set_page_config(
     page_icon="🛡️"
 )
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audit_logs.db')
+# --- RENDER API CONFIG ---
+RENDER_URL = "https://genai-guard.onrender.com"
+API_KEY    = "genai-guard-secret-2024"
 
-# --- LOAD FROM SQLITE ---
+# --- LOAD FROM RENDER API ---
 def load_logs():
-    if not os.path.exists(DB_FILE):
-        return pd.DataFrame()
     try:
-        conn = sqlite3.connect(DB_FILE)
-        df = pd.read_sql_query(
-            "SELECT * FROM incidents ORDER BY timestamp DESC", conn
+        response = requests.get(
+            f"{RENDER_URL}/incidents",
+            headers={"X-API-Key": API_KEY},
+            timeout=30
         )
-        conn.close()
-        return df
+        data = response.json()
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data)
     except Exception as e:
-        st.error(f"❌ DB Error: {e}")
+        st.error(f"❌ Error fetching incidents: {e}")
         return pd.DataFrame()
 
 # --- SEVERITY COLOR ---
@@ -109,7 +112,7 @@ def main():
 
     # --- INCIDENTS TABLE ---
     st.subheader(f"🚨 Incident Log ({len(filtered)} records)")
-    
+
     display_df = filtered[[
         'timestamp', 'ip_address', 'platform',
         'violation', 'severity', 'snippet', 'status'
