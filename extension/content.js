@@ -126,10 +126,8 @@ function updatePopupCounter(violation, severity) {
 async function reportToSOC(text, violation, severity) {
     console.log(`📡 Reporting to SOC: [${severity}] ${violation}`);
 
-    // 1. Update popup counter FIRST
     updatePopupCounter(violation, severity);
 
-    // 2. Get public IP
     let publicIP = "Unavailable";
     try {
         const res  = await fetch("https://api.ipify.org?format=json");
@@ -139,7 +137,6 @@ async function reportToSOC(text, violation, severity) {
         publicIP = "Unavailable";
     }
 
-    // 3. Report to Render backend
     try {
         await fetch("https://genai-guard.onrender.com/log", {
             method: "POST",
@@ -205,7 +202,7 @@ function checkTextForThreats(text, source = "TEXT_INPUT") {
 // PART H: TEXT INPUT INTERCEPTION
 // ============================================
 
-// MutationObserver for contenteditable divs (ChatGPT/Gemini)
+// MutationObserver for contenteditable divs
 function setupMutationObserver() {
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
@@ -214,7 +211,6 @@ function setupMutationObserver() {
                 const text = target.innerText || "";
                 const trimmedText = text.slice(-500);
                 if (trimmedText.length > 0) {
-                    console.log("📝 MutationObserver scanning:", trimmedText.slice(-50));
                     checkTextForThreats(trimmedText, "TEXT_INPUT");
                 }
             }
@@ -243,8 +239,6 @@ document.addEventListener('input', (e) => {
     const text        = e.target.value ||
                        (isEditable ? e.target.innerText : "") || "";
     const trimmedText = text.slice(-500);
-
-    console.log("📝 Input scanning:", trimmedText.slice(-50));
     checkTextForThreats(trimmedText, "TEXT_INPUT");
 }, true);
 
@@ -265,7 +259,7 @@ window.addEventListener('keydown', (e) => {
     }
 }, true);
 
-// Block submit button clicks on AI platforms
+// Block submit button clicks
 document.addEventListener('click', (e) => {
     const btn = e.target.closest(
         'button[data-testid="send-button"], button[aria-label="Send message"], button[aria-label="Send"]'
@@ -362,35 +356,73 @@ async function scanImage(file) {
     }
 }
 
-// File picker upload — IMMEDIATELY disable to prevent ChatGPT upload
-document.addEventListener('change', async (event) => {
-    const target = event.target;
-    if (target.type === 'file' && target.files?.length > 0) {
-        const file = target.files[0];
+// ============================================
+// PART J: FILE UPLOAD CLICK INTERCEPTION
+// Intercepts BEFORE ChatGPT gets the file!
+// ============================================
+let isOurPickerActive = false;
+
+document.addEventListener('click', async (e) => {
+    // Skip if our own picker triggered this
+    if (isOurPickerActive) return;
+
+    const fileInput = e.target.closest('input[type="file"]');
+    if (!fileInput) return;
+
+    // Intercept the click
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    // Create our controlled file picker
+    const ourPicker = document.createElement('input');
+    ourPicker.type   = 'file';
+    ourPicker.accept = 'image/*,.pdf,.doc,.docx';
+    ourPicker.style.display = 'none';
+    document.body.appendChild(ourPicker);
+
+    ourPicker.onchange = async () => {
+        if (!ourPicker.files || ourPicker.files.length === 0) {
+            document.body.removeChild(ourPicker);
+            return;
+        }
+
+        const file = ourPicker.files[0];
+
         if (file.type.startsWith('image/')) {
-
-            // IMMEDIATELY block ChatGPT from getting the file
-            target.disabled = true;
-            event.stopImmediatePropagation();
-            event.preventDefault();
-
-            showScanningIndicator("🔍 Scanning image for sensitive data...");
+            // Scan image with Google Vision
             const threat = await scanImage(file);
-            hideScanningIndicator();
 
             if (threat) {
-                // THREAT FOUND — keep blocked
-                target.value   = '';
-                target.disabled = false;
+                // BLOCKED
                 reportImageThreat("upload");
-            } else {
-                // SAFE — re-enable and allow upload
-                target.disabled = false;
-                const newEvent  = new Event('change', { bubbles: true });
-                target.dispatchEvent(newEvent);
+                alert(`🛑 BLOCKED: Sensitive data detected in image.\nIncident reported to SOC.`);
+                document.body.removeChild(ourPicker);
+                return;
             }
         }
-    }
+
+        // SAFE — transfer file to original input
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+
+            // Trigger original change event
+            isOurPickerActive = true;
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            isOurPickerActive = false;
+        } catch (err) {
+            console.error("❌ File transfer error:", err);
+        }
+
+        document.body.removeChild(ourPicker);
+    };
+
+    // Open our picker
+    isOurPickerActive = true;
+    ourPicker.click();
+    isOurPickerActive = false;
+
 }, true);
 
 // Paste image (Ctrl+V)
