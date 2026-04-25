@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
 import os
+import json
+import tempfile
 from datetime import datetime
 import smtplib
 import base64
@@ -27,16 +29,34 @@ EMAIL_SENDER   = os.getenv("ALERT_EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("ALERT_EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("ALERT_EMAIL_RECEIVER")
 
-# Debug — print email config on startup
+# Debug
 print(f"📧 Email Sender: {EMAIL_SENDER}")
 print(f"📧 Email Receiver: {EMAIL_RECEIVER}")
 print(f"📧 Email Password set: {'Yes' if EMAIL_PASSWORD else 'No'}")
 
 # Google Vision credentials
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "google_vision_key.json"
-)
+google_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
+if google_creds:
+    # Running on cloud — write credentials to temp file
+    try:
+        creds_dict = json.loads(google_creds)
+        temp_file  = tempfile.NamedTemporaryFile(
+            mode='w', suffix='.json', delete=False
+        )
+        json.dump(creds_dict, temp_file)
+        temp_file.close()
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
+        print("✅ Google credentials loaded from environment")
+    except Exception as e:
+        print(f"❌ Google credentials error: {e}")
+else:
+    # Running locally — use local file
+    local_key = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "google_vision_key.json"
+    )
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = local_key
+    print("✅ Google credentials loaded from local file")
 
 # --- DB SETUP ---
 def init_db():
@@ -109,9 +129,7 @@ def send_email_alert(entry):
         print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}")
 
     except Exception as e:
-        import traceback
         print(f"❌ Email Error: {e}")
-        print(f"❌ Full traceback: {traceback.format_exc()}")
 
 # --- MAIN LOGGING ENDPOINT ---
 @app.route('/log', methods=['POST'])
@@ -185,7 +203,7 @@ def scan_image():
     try:
         from google.cloud import vision
 
-        client = vision.ImageAnnotatorClient()
+        client     = vision.ImageAnnotatorClient()
         image_data = base64.b64decode(data['image'])
         image      = vision.Image(content=image_data)
         response   = client.text_detection(image=image)
@@ -211,4 +229,4 @@ if __name__ == '__main__':
     print("📡 GenAI Guard SOC Server running on Port 5000...")
     print(f"🔑 API Key: {API_KEY}")
     port = int(os.getenv("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    app.run(host='0.0.0.0', port=port, debug=False)
