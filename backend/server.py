@@ -29,17 +29,16 @@ EMAIL_SENDER   = os.getenv("ALERT_EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("ALERT_EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("ALERT_EMAIL_RECEIVER")
 
-# Debug
 print(f"📧 Email Sender: {EMAIL_SENDER}")
 print(f"📧 Email Receiver: {EMAIL_RECEIVER}")
 print(f"📧 Email Password set: {'Yes' if EMAIL_PASSWORD else 'No'}")
 
 # Google Vision credentials
-google_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
-if google_creds:
-    # Running on cloud — write credentials to temp file
+google_creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+
+if google_creds_json:
     try:
-        creds_dict = json.loads(google_creds)
+        creds_dict = json.loads(google_creds_json)
         temp_file  = tempfile.NamedTemporaryFile(
             mode='w', suffix='.json', delete=False
         )
@@ -50,7 +49,6 @@ if google_creds:
     except Exception as e:
         print(f"❌ Google credentials error: {e}")
 else:
-    # Running locally — use local file
     local_key = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "google_vision_key.json"
