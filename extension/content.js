@@ -9,24 +9,30 @@ console.log("🛡️ GenAI Guard: CONNECTED & ACTIVE.");
 // ============================================
 const sensitivePatterns = [
     // CRITICAL
-    { name: "Credential",  regex: /(password|passwd|api_key|access_key|secret_key)/i, severity: "CRITICAL" },
-    { name: "Private Key", regex: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/,            severity: "CRITICAL" },
-    { name: "JWT Token",   regex: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+/,              severity: "CRITICAL" },
+    { name: "Credential",      regex: /(password|passwd|api_key|access_key|secret_key)/i, severity: "CRITICAL" },
+    { name: "Private Key",     regex: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/,            severity: "CRITICAL" },
+    { name: "JWT Token",       regex: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+/,              severity: "CRITICAL" },
 
     // HIGH
-    { name: "AWS Key",     regex: /AKIA[0-9A-Z]{16}/,                                 severity: "HIGH" },
-    { name: "Google Key",  regex: /AIza[0-9A-Za-z\-_]{35}/,                           severity: "HIGH" },
-    { name: "Credit Card", regex: /\b(?:\d[ -]?){13,16}\b/,                           severity: "HIGH" },
-    { name: "Internal IP", regex: /(192\.168\.\d{1,3}|10\.\d{1,3}\.\d{1,3})/,        severity: "HIGH" },
+    { name: "AWS Key",         regex: /AKIA[0-9A-Z]{16}/,                                 severity: "HIGH" },
+    { name: "Google Key",      regex: /AIza[0-9A-Za-z\-_]{35}/,                           severity: "HIGH" },
+    { name: "Credit Card",     regex: /\b(?:\d[ -]?){13,16}\b/,                           severity: "HIGH" },
+    { name: "Internal IP",     regex: /(192\.168\.\d{1,3}|10\.\d{1,3}\.\d{1,3})/,        severity: "HIGH" },
+    { name: "Bank Account",    regex: /\b[0-9]{9,18}\b/,                                  severity: "HIGH" },
+    { name: "IFSC Code",       regex: /\b[A-Z]{4}0[A-Z0-9]{6}\b/,                        severity: "HIGH" },
+    { name: "Passport Number", regex: /\b[A-Z][1-9][0-9]{7}\b/,                          severity: "HIGH" },
 
     // MEDIUM
-    { name: "Financial",   regex: /(salary|payroll|budget|revenue|\$\d{3,})/i,         severity: "MEDIUM" },
-    { name: "Aadhaar",     regex: /\b[2-9]{1}\d{3}\s?\d{4}\s?\d{4}\b/,               severity: "MEDIUM" },
-    { name: "PAN Card",    regex: /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/,                    severity: "MEDIUM" },
+    { name: "Financial",       regex: /(salary|payroll|budget|revenue|\$\d{3,})/i,         severity: "MEDIUM" },
+    { name: "Aadhaar",         regex: /\b[2-9]{1}\d{3}\s?\d{4}\s?\d{4}\b/,               severity: "MEDIUM" },
+    { name: "PAN Card",        regex: /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/,                    severity: "MEDIUM" },
+    { name: "GST Number",      regex: /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/, severity: "MEDIUM" },
+    { name: "Driving License", regex: /\b[A-Z]{2}[0-9]{2}[0-9]{11}\b/,                   severity: "MEDIUM" },
+    { name: "Voter ID",        regex: /\b[A-Z]{3}[0-9]{7}\b/,                             severity: "MEDIUM" },
 
     // LOW
-    { name: "Email",       regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, severity: "LOW" },
-    { name: "Phone",       regex: /(\+91[\-\s]?)?[6-9]\d{9}/,                         severity: "LOW" },
+    { name: "Email",           regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, severity: "LOW" },
+    { name: "Phone Number",    regex: /(\+91[\-\s]?)?[6-9]\d{9}/,                         severity: "LOW" },
 ];
 
 // ============================================
@@ -358,22 +364,18 @@ async function scanImage(file) {
 
 // ============================================
 // PART J: FILE UPLOAD CLICK INTERCEPTION
-// Intercepts BEFORE ChatGPT gets the file!
 // ============================================
 let isOurPickerActive = false;
 
 document.addEventListener('click', async (e) => {
-    // Skip if our own picker triggered this
     if (isOurPickerActive) return;
 
     const fileInput = e.target.closest('input[type="file"]');
     if (!fileInput) return;
 
-    // Intercept the click
     e.preventDefault();
     e.stopImmediatePropagation();
 
-    // Create our controlled file picker
     const ourPicker = document.createElement('input');
     ourPicker.type   = 'file';
     ourPicker.accept = 'image/*,.pdf,.doc,.docx';
@@ -389,11 +391,9 @@ document.addEventListener('click', async (e) => {
         const file = ourPicker.files[0];
 
         if (file.type.startsWith('image/')) {
-            // Scan image with Google Vision
             const threat = await scanImage(file);
 
             if (threat) {
-                // BLOCKED
                 reportImageThreat("upload");
                 alert(`🛑 BLOCKED: Sensitive data detected in image.\nIncident reported to SOC.`);
                 document.body.removeChild(ourPicker);
@@ -401,13 +401,11 @@ document.addEventListener('click', async (e) => {
             }
         }
 
-        // SAFE — transfer file to original input
         try {
             const dt = new DataTransfer();
             dt.items.add(file);
             fileInput.files = dt.files;
 
-            // Trigger original change event
             isOurPickerActive = true;
             fileInput.dispatchEvent(new Event('change', { bubbles: true }));
             isOurPickerActive = false;
@@ -418,7 +416,6 @@ document.addEventListener('click', async (e) => {
         document.body.removeChild(ourPicker);
     };
 
-    // Open our picker
     isOurPickerActive = true;
     ourPicker.click();
     isOurPickerActive = false;
@@ -459,3 +456,18 @@ document.addEventListener('drop', async (event) => {
         }
     }
 }, true);
+
+// ============================================
+// PART K: KEEP RENDER SERVER ALIVE
+// ============================================
+function pingServer() {
+    fetch("https://genai-guard.onrender.com/health")
+        .then(() => console.log("🟢 Render server pinged"))
+        .catch(() => console.log("🔴 Render server sleeping"));
+}
+
+// Ping on page load
+pingServer();
+
+// Ping every 10 minutes
+setInterval(pingServer, 10 * 60 * 1000);
