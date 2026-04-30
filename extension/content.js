@@ -1,11 +1,22 @@
 // ============================================
 // GENAI GUARD - content.js
-// Core DLP Detection Engine - Final Version
+// Core DLP Detection Engine - Fixed Version
 // ============================================
 console.log("🛡️ GenAI Guard: CONNECTED & ACTIVE.");
 
 // ============================================
-// PART A: SENSITIVE PATTERNS LIBRARY
+// PART A: EXTENSION CONTEXT VALIDATION
+// ============================================
+function isExtensionContextValid() {
+    try {
+        return !!(chrome.runtime && chrome.runtime.id);
+    } catch(e) {
+        return false;
+    }
+}
+
+// ============================================
+// PART B: SENSITIVE PATTERNS LIBRARY
 // ============================================
 const sensitivePatterns = [
     // CRITICAL
@@ -18,7 +29,7 @@ const sensitivePatterns = [
     { name: "Google Key",      regex: /AIza[0-9A-Za-z\-_]{35}/,                           severity: "HIGH" },
     { name: "Credit Card",     regex: /\b(?:\d[ -]?){13,16}\b/,                           severity: "HIGH" },
     { name: "Internal IP",     regex: /(192\.168\.\d{1,3}|10\.\d{1,3}\.\d{1,3})/,        severity: "HIGH" },
-    { name: "Bank Account", regex: /\b[0-9]{11,18}\b/, severity: "HIGH" },
+    { name: "Bank Account",    regex: /\b[0-9]{11,18}\b/,                                 severity: "HIGH" },
     { name: "IFSC Code",       regex: /\b[A-Z]{4}0[A-Z0-9]{6}\b/,                        severity: "HIGH" },
     { name: "Passport Number", regex: /\b[A-Z][1-9][0-9]{7}\b/,                          severity: "HIGH" },
 
@@ -36,7 +47,7 @@ const sensitivePatterns = [
 ];
 
 // ============================================
-// PART B: SEVERITY UTILITIES
+// PART C: SEVERITY UTILITIES
 // ============================================
 const severityStyles = {
     CRITICAL: { bg: "#7b0000", emoji: "☠️" },
@@ -54,7 +65,7 @@ function getHighestSeverity(matchedPatterns) {
 }
 
 // ============================================
-// PART C: ALERT BOX UI
+// PART D: ALERT BOX UI
 // ============================================
 const alertBox = document.createElement("div");
 alertBox.className = "genai-guard-alert";
@@ -62,6 +73,7 @@ alertBox.style.display = "none";
 document.body.appendChild(alertBox);
 
 function showAlert(severity, violationName) {
+    if (!isExtensionContextValid()) return;
     const style = severityStyles[severity];
     alertBox.className = `genai-guard-alert severity-${severity.toLowerCase()}`;
     alertBox.innerHTML = `
@@ -85,7 +97,7 @@ function hideAlert() {
 }
 
 // ============================================
-// PART D: GET PUBLIC IP
+// PART E: GET PUBLIC IP
 // ============================================
 async function getPublicIP() {
     try {
@@ -98,14 +110,24 @@ async function getPublicIP() {
 }
 
 // ============================================
-// PART E: UPDATE POPUP COUNTER
+// PART F: UPDATE POPUP COUNTER (FIXED)
 // ============================================
 function updatePopupCounter(violation, severity) {
+    // ✅ Extension context validation
+    if (!isExtensionContextValid()) {
+        console.log("Extension context invalid - skipping counter update");
+        return;
+    }
+    
     if (typeof chrome === 'undefined' || !chrome.storage) return;
     const sev = severity.toLowerCase();
     chrome.storage.local.get(
         ["threatCount", "critical", "high", "medium", "low"],
         (result) => {
+            if (chrome.runtime.lastError) {
+                console.log("Storage error:", chrome.runtime.lastError);
+                return;
+            }
             let update = {
                 threatCount: (result.threatCount || 0) + 1,
                 critical:    (result.critical    || 0),
@@ -127,12 +149,15 @@ function updatePopupCounter(violation, severity) {
 }
 
 // ============================================
-// PART F: SOC REPORTING
+// PART G: SOC REPORTING (FIXED)
 // ============================================
 async function reportToSOC(text, violation, severity) {
     console.log(`📡 Reporting to SOC: [${severity}] ${violation}`);
 
-    updatePopupCounter(violation, severity);
+    // Only update counter if extension context is valid
+    if (isExtensionContextValid()) {
+        updatePopupCounter(violation, severity);
+    }
 
     let publicIP = "Unavailable";
     try {
@@ -167,7 +192,7 @@ async function reportToSOC(text, violation, severity) {
 }
 
 // ============================================
-// PART G: CORE THREAT DETECTION
+// PART H: CORE THREAT DETECTION
 // ============================================
 let isThreatDetected    = false;
 let lastMatchedPatterns = [];
@@ -205,7 +230,7 @@ function checkTextForThreats(text, source = "TEXT_INPUT") {
 }
 
 // ============================================
-// PART H: TEXT INPUT INTERCEPTION
+// PART I: TEXT INPUT INTERCEPTION
 // ============================================
 
 // MutationObserver for contenteditable divs
@@ -284,7 +309,7 @@ document.addEventListener('click', (e) => {
 }, true);
 
 // ============================================
-// PART I: IMAGE PROTECTION (Google Vision API)
+// PART J: IMAGE PROTECTION (Google Vision API)
 // ============================================
 function showScanningIndicator(message) {
     let indicator = document.getElementById('genai-guard-scanning');
@@ -363,7 +388,7 @@ async function scanImage(file) {
 }
 
 // ============================================
-// PART J: FILE UPLOAD CLICK INTERCEPTION
+// PART K: FILE UPLOAD CLICK INTERCEPTION
 // ============================================
 let isOurPickerActive = false;
 
@@ -435,6 +460,7 @@ document.addEventListener('paste', async (event) => {
             const threat = await scanImage(file);
             if (threat) {
                 reportImageThreat("paste");
+                alert(`🛑 BLOCKED: Sensitive data detected in pasted image.\nIncident reported to SOC.`);
             }
             break;
         }
@@ -453,14 +479,18 @@ document.addEventListener('drop', async (event) => {
         const threat = await scanImage(file);
         if (threat) {
             reportImageThreat("drop");
+            alert(`🛑 BLOCKED: Sensitive data detected in dropped image.\nIncident reported to SOC.`);
         }
     }
 }, true);
 
 // ============================================
-// PART K: KEEP RENDER SERVER ALIVE
+// PART L: KEEP RENDER SERVER ALIVE (FIXED)
 // ============================================
 function pingServer() {
+    // ✅ Extension context validation
+    if (!isExtensionContextValid()) return;
+    
     fetch("https://genai-guard.onrender.com/health")
         .then(() => console.log("🟢 Render server pinged"))
         .catch(() => console.log("🔴 Render server sleeping"));
@@ -469,5 +499,18 @@ function pingServer() {
 // Ping on page load
 pingServer();
 
-// Ping every 10 minutes
-setInterval(pingServer, 10 * 60 * 1000);
+// Store interval ID for cleanup
+window._pingInterval = setInterval(pingServer, 10 * 60 * 1000);
+
+// ============================================
+// PART M: CLEANUP ON CONTEXT INVALIDATION
+// ============================================
+window.addEventListener('unload', () => {
+    if (typeof chrome !== 'undefined' && chrome.runtime && !chrome.runtime.id) {
+        console.log("Extension context invalidated - cleaning up");
+        if (window._pingInterval) {
+            clearInterval(window._pingInterval);
+            window._pingInterval = null;
+        }
+    }
+});
