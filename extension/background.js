@@ -11,7 +11,9 @@ chrome.runtime.onInstalled.addListener(() => {
         high:        0,
         medium:      0,
         low:         0,
-        lastIncident: null
+        lastIncident: null,
+        socApiBaseUrl: "https://genai-guard.onrender.com",
+        socApiKey: ""
     });
     console.log("🛡️ GenAI Guard: Storage Initialized.");
 });

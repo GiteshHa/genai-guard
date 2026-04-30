@@ -46,6 +46,19 @@
             <p class="incident-value" id="last-incident-text">None this session</p>
         </div>
 
+        <!-- SOC Configuration -->
+        <div class="config-box">
+            <p class="config-label">⚙️ SOC Connection</p>
+            <label for="soc-base-url">Base URL</label>
+            <input id="soc-base-url" type="text" placeholder="https://genai-guard.onrender.com" />
+
+            <label for="soc-api-key">API Key</label>
+            <input id="soc-api-key" type="password" placeholder="Enter SOC API key" />
+
+            <button id="save-config" type="button">Save SOC Settings</button>
+            <p id="config-status" class="config-status"></p>
+        </div>
+
         <!-- Warning Message -->
         <div class="warning-box">
             <p class="warning-text">🔒 Monitored by IT Security</p>

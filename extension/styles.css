@@ -130,6 +130,69 @@ body {
     font-weight: 500;
 }
 
+/* --- SOC CONFIG --- */
+.config-box {
+    background: white;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 12px;
+    text-align: left;
+    border-left: 4px solid #1a1a2e;
+}
+
+.config-label {
+    font-size: 10px;
+    color: #999;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.config-box label {
+    display: block;
+    font-size: 11px;
+    color: #444;
+    margin: 8px 0 4px;
+    font-weight: 600;
+}
+
+.config-box input {
+    width: 100%;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-size: 11px;
+    outline: none;
+}
+
+.config-box input:focus {
+    border-color: #1a1a2e;
+}
+
+#save-config {
+    margin-top: 10px;
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    padding: 8px;
+    background: #1a1a2e;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#save-config:hover {
+    opacity: 0.9;
+}
+
+.config-status {
+    min-height: 14px;
+    font-size: 10px;
+    color: #666;
+    margin-top: 6px;
+}
+
 /* --- ACTION BUTTONS --- */
 .actions {
     display: flex;

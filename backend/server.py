@@ -7,6 +7,7 @@ import tempfile
 from datetime import datetime
 import smtplib
 import base64
+import hmac
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -22,7 +23,7 @@ CORS(app)
 
 # Config
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audit_logs.db')
-API_KEY  = os.getenv("SOC_API_KEY", "genai-guard-secret-2024")
+API_KEY  = os.getenv("SOC_API_KEY")
 
 # Email config
 EMAIL_SENDER   = os.getenv("ALERT_EMAIL_SENDER")
@@ -32,6 +33,7 @@ EMAIL_RECEIVER = os.getenv("ALERT_EMAIL_RECEIVER")
 print(f"📧 Email Sender: {EMAIL_SENDER}")
 print(f"📧 Email Receiver: {EMAIL_RECEIVER}")
 print(f"📧 Email Password set: {'Yes' if EMAIL_PASSWORD else 'No'}")
+print(f"🔑 SOC API key configured: {'Yes' if API_KEY else 'No'}")
 
 # Google Vision credentials
 google_creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
@@ -84,6 +86,13 @@ VALID_SEVERITIES = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
 def validate_severity(sev):
     return sev.upper() if sev and sev.upper() in VALID_SEVERITIES else "MEDIUM"
 
+def is_request_authorized():
+    """Validate the request API key without leaking timing details."""
+    provided_key = request.headers.get("X-API-Key", "")
+    if not API_KEY:
+        return False
+    return hmac.compare_digest(provided_key, API_KEY)
+
 # --- EMAIL ALERT ---
 def send_email_alert(entry):
     if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
@@ -132,7 +141,7 @@ def send_email_alert(entry):
 # --- MAIN LOGGING ENDPOINT ---
 @app.route('/log', methods=['POST'])
 def log_threat():
-    if request.headers.get("X-API-Key") != API_KEY:
+    if not is_request_authorized():
         return jsonify({"status": "unauthorized"}), 401
 
     data = request.json
@@ -177,7 +186,7 @@ def log_threat():
 # --- GET ALL INCIDENTS ---
 @app.route('/incidents', methods=['GET'])
 def get_incidents():
-    if request.headers.get("X-API-Key") != API_KEY:
+    if not is_request_authorized():
         return jsonify({"status": "unauthorized"}), 401
 
     conn = sqlite3.connect(DB_FILE)
@@ -191,7 +200,7 @@ def get_incidents():
 # --- GOOGLE VISION IMAGE SCAN ---
 @app.route('/scan_image', methods=['POST'])
 def scan_image():
-    if request.headers.get("X-API-Key") != API_KEY:
+    if not is_request_authorized():
         return jsonify({"status": "unauthorized"}), 401
 
     data = request.json
@@ -224,7 +233,6 @@ def health():
     return jsonify({"status": "GenAI Guard SOC Server Running ✅"}), 200
 
 if __name__ == '__main__':
-    print("📡 GenAI Guard SOC Server running on Port 5000...")
-    print(f"🔑 API Key: {API_KEY}")
     port = int(os.getenv("PORT", 5000))
+    print(f"📡 GenAI Guard SOC Server running on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False)

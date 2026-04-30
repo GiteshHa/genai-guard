@@ -30,6 +30,41 @@ function isExtensionAlive() {
     }
 }
 
+const DEFAULT_SOC_BASE_URL = "https://genai-guard.onrender.com";
+let socConfigCache = {
+    baseUrl: DEFAULT_SOC_BASE_URL,
+    apiKey: ""
+};
+
+function getSocConfig() {
+    return new Promise((resolve) => {
+        let resolved = false;
+        const done = (value) => {
+            if (!resolved) {
+                resolved = true;
+                resolve(value);
+            }
+        };
+
+        safeChromeCall(() => {
+            chrome.storage.local.get(["socApiBaseUrl", "socApiKey"], (result) => {
+                socConfigCache = {
+                    baseUrl: result.socApiBaseUrl || DEFAULT_SOC_BASE_URL,
+                    apiKey: result.socApiKey || ""
+                };
+                done(socConfigCache);
+            });
+        });
+
+        // If chrome APIs are unavailable, fall back to cached defaults.
+        if (!isExtensionAlive()) {
+            done(socConfigCache);
+        }
+
+        setTimeout(() => done(socConfigCache), 250);
+    });
+}
+
 // ============================================
 // PART B: SENSITIVE PATTERNS LIBRARY
 // ============================================
@@ -175,13 +210,18 @@ async function reportToSOC(text, violation, severity) {
     }
 
     let publicIP = await getPublicIP();
+    const socConfig = await getSocConfig();
+    if (!socConfig.apiKey) {
+        console.warn("⚠️ SOC API key not configured — report skipped");
+        return;
+    }
 
     try {
-        const response = await fetch("https://genai-guard.onrender.com/log", {
+        const response = await fetch(`${socConfig.baseUrl}/log`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-API-Key": "genai-guard-secret-2024"
+                "X-API-Key": socConfig.apiKey
             },
             body: JSON.stringify({
                 violation:  violation,
@@ -375,14 +415,20 @@ function reportImageThreat(source) {
 async function scanImage(file) {
     try {
         showScanningIndicator("🔍 Scanning image for sensitive data...");
+        const socConfig = await getSocConfig();
+        if (!socConfig.apiKey) {
+            console.warn("⚠️ SOC API key not configured — image scan skipped");
+            hideScanningIndicator();
+            return false;
+        }
 
         const base64 = await fileToBase64(file);
 
-        const response = await fetch("https://genai-guard.onrender.com/scan_image", {
+        const response = await fetch(`${socConfig.baseUrl}/scan_image`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-API-Key": "genai-guard-secret-2024"
+                "X-API-Key": socConfig.apiKey
             },
             body: JSON.stringify({ image: base64 })
         });
@@ -501,8 +547,9 @@ document.addEventListener('drop', async (event) => {
 // ============================================
 // PART L: KEEP RENDER SERVER ALIVE
 // ============================================
-function pingServer() {
-    fetch("https://genai-guard.onrender.com/health")
+async function pingServer() {
+    const socConfig = await getSocConfig();
+    fetch(`${socConfig.baseUrl}/health`)
         .then(() => console.log("🟢 Render server pinged"))
         .catch(() => console.log("🔴 Render server sleeping"));
 }

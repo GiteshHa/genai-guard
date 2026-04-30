@@ -27,9 +27,52 @@ function loadStats() {
     );
 }
 
+function setConfigStatus(message, isError = false) {
+    const statusEl = document.getElementById("config-status");
+    statusEl.innerText = message;
+    statusEl.style.color = isError ? "#b42318" : "#027a48";
+}
+
+function loadSocConfig() {
+    chrome.storage.local.get(["socApiBaseUrl", "socApiKey"], (result) => {
+        document.getElementById("soc-base-url").value =
+            result.socApiBaseUrl || "https://genai-guard.onrender.com";
+        document.getElementById("soc-api-key").value = result.socApiKey || "";
+        setConfigStatus("SOC settings loaded.");
+    });
+}
+
+function saveSocConfig() {
+    const baseUrl = document.getElementById("soc-base-url").value.trim();
+    const apiKey = document.getElementById("soc-api-key").value.trim();
+
+    if (!baseUrl) {
+        setConfigStatus("Base URL is required.", true);
+        return;
+    }
+
+    try {
+        new URL(baseUrl);
+    } catch (_err) {
+        setConfigStatus("Enter a valid URL (http://... or https://...).", true);
+        return;
+    }
+
+    chrome.storage.local.set(
+        {
+            socApiBaseUrl: baseUrl,
+            socApiKey: apiKey
+        },
+        () => {
+            setConfigStatus("SOC settings saved.");
+        }
+    );
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Load immediately
     loadStats();
+    loadSocConfig();
 
     // Load again after delays to catch recent updates
     setTimeout(loadStats, 300);
@@ -39,4 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.onChanged.addListener(() => {
         setTimeout(loadStats, 100);
     });
+
+    document.getElementById("save-config").addEventListener("click", saveSocConfig);
 });

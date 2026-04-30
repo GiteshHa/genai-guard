@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import os
 
 # --- PAGE CONFIG (MUST BE FIRST) ---
 st.set_page_config(
@@ -12,7 +13,10 @@ st.set_page_config(
 
 # --- RENDER API CONFIG ---
 RENDER_URL = "https://genai-guard.onrender.com"
-API_KEY    = "genai-guard-secret-2024"
+try:
+    API_KEY = st.secrets.get("SOC_API_KEY", "")
+except Exception:
+    API_KEY = os.getenv("SOC_API_KEY", "")
 
 # --- SESSION STATE INITIALIZATION ---
 # This ensures data persists across reruns
@@ -24,6 +28,10 @@ if "last_refresh" not in st.session_state:
 # --- LOAD DATA FROM BACKEND (CACHED) ---
 def load_logs_from_api():
     """Fetch incidents from backend. This is fast because it only calls the API."""
+    if not API_KEY:
+        st.error("❌ SOC API key is not configured. Set SOC_API_KEY in Streamlit secrets.")
+        return pd.DataFrame()
+
     try:
         response = requests.get(
             f"{RENDER_URL}/incidents",
