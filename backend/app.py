@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import requests
-import os
 import time
 
-# --- CONFIG ---
+# --- PAGE CONFIG (MUST BE FIRST) ---
 st.set_page_config(
     page_title="GenAI Guard SOC",
     layout="wide",
@@ -15,8 +14,16 @@ st.set_page_config(
 RENDER_URL = "https://genai-guard.onrender.com"
 API_KEY    = "genai-guard-secret-2024"
 
-# --- LOAD FROM RENDER API ---
-def load_logs():
+# --- SESSION STATE INITIALIZATION ---
+# This ensures data persists across reruns
+if "incident_data" not in st.session_state:
+    st.session_state.incident_data = None
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = None
+
+# --- LOAD DATA FROM BACKEND (CACHED) ---
+def load_logs_from_api():
+    """Fetch incidents from backend. This is fast because it only calls the API."""
     try:
         response = requests.get(
             f"{RENDER_URL}/incidents",
@@ -26,12 +33,23 @@ def load_logs():
         data = response.json()
         if not data:
             return pd.DataFrame()
-        return pd.DataFrame(data)
+        
+        df = pd.DataFrame(data)
+        
+        # Ensure proper data types
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Sort by timestamp - most recent first
+        if 'timestamp' in df.columns:
+            df = df.sort_values('timestamp', ascending=False)
+        
+        return df
     except Exception as e:
         st.error(f"❌ Error fetching incidents: {e}")
         return pd.DataFrame()
 
-# --- SEVERITY COLOR ---
+# --- SEVERITY COLOR FUNCTION ---
 def severity_color(val):
     colors = {
         "CRITICAL": "background-color: #7b0000; color: white;",
@@ -41,104 +59,158 @@ def severity_color(val):
     }
     return colors.get(str(val).upper(), "")
 
-# --- MAIN ---
-def main():
-    st.title("🛡️ GenAI Guard — SOC Threat Triage Center")
-    st.caption("Real-time monitoring of sensitive data violations across AI platforms")
+# --- MANUAL REFRESH BUTTON ---
+def refresh_data():
+    """Callback function to manually refresh data"""
+    st.session_state.incident_data = load_logs_from_api()
+    st.session_state.last_refresh = time.strftime("%Y-%m-%d %H:%M:%S")
+    st.toast("✅ Data refreshed from backend!", icon="🔄")
 
-    df = load_logs()
+# --- MAIN UI ---
+st.title("🛡️ GenAI Guard — SOC Threat Triage Center")
+st.caption("Real-time monitoring of sensitive data violations across AI platforms")
 
-    # --- EMPTY STATE ---
-    if df.empty:
-        st.success("✅ No threats detected yet. System is live and monitoring.")
-        st.info("💡 Try typing a password or Aadhaar number in ChatGPT or Gemini to trigger a test alert.")
-        return
+# --- REFRESH CONTROLS (Top of Dashboard) ---
+col_refresh, col_status = st.columns([1, 4])
 
-    # --- KPI CARDS ---
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("📋 Total Incidents",  len(df))
-    col2.metric("⚫ Critical",  len(df[df['severity'] == 'CRITICAL']))
-    col3.metric("🔴 High",      len(df[df['severity'] == 'HIGH']))
-    col4.metric("🟡 Medium",    len(df[df['severity'] == 'MEDIUM']))
-    col5.metric("🟢 Low",       len(df[df['severity'] == 'LOW']))
+with col_refresh:
+    if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
+        refresh_data()
 
-    st.divider()
+with col_status:
+    if st.session_state.last_refresh:
+        st.caption(f"Last refreshed: {st.session_state.last_refresh}")
+    else:
+        st.caption("Click 'Refresh Data' to load incidents")
 
-    # --- FILTERS ---
-    st.subheader("🔍 Filter Incidents")
-    f1, f2, f3 = st.columns(3)
+st.divider()
 
-    with f1:
-        sev_filter = st.multiselect(
-            "Severity",
-            options=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
-            default=["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-        )
-    with f2:
-        platform_options = df['platform'].dropna().unique().tolist()
-        plat_filter = st.multiselect(
-            "Platform",
-            options=platform_options,
-            default=platform_options
-        )
-    with f3:
-        violation_options = df['violation'].dropna().unique().tolist()
-        viol_filter = st.multiselect(
-            "Violation Type",
-            options=violation_options,
-            default=violation_options
-        )
+# --- LOAD DATA (Only on first load or manual refresh) ---
+if st.session_state.incident_data is None:
+    with st.spinner("Loading incidents from SOC server..."):
+        st.session_state.incident_data = load_logs_from_api()
+        st.session_state.last_refresh = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Apply filters
-    filtered = df[
-        df['severity'].isin(sev_filter) &
-        df['platform'].isin(plat_filter) &
-        df['violation'].isin(viol_filter)
-    ]
+df = st.session_state.incident_data
 
-    st.divider()
+# --- EMPTY STATE ---
+if df.empty:
+    st.success("✅ No threats detected yet. System is live and monitoring.")
+    st.info("💡 Try typing a password or Aadhaar number in ChatGPT or Gemini to trigger a test alert.")
+    st.stop()
 
-    # --- CHARTS ---
-    st.subheader("📊 Analytics")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Violations by Type**")
-        st.bar_chart(filtered['violation'].value_counts())
-    with c2:
-        st.markdown("**Violations by Platform**")
-        st.bar_chart(filtered['platform'].value_counts())
+# --- KPI CARDS ---
+col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("📋 Total Incidents",  len(df))
+col2.metric("⚫ Critical",  len(df[df['severity'] == 'CRITICAL']))
+col3.metric("🔴 High",      len(df[df['severity'] == 'HIGH']))
+col4.metric("🟡 Medium",    len(df[df['severity'] == 'MEDIUM']))
+col5.metric("🟢 Low",       len(df[df['severity'] == 'LOW']))
 
-    st.divider()
+st.divider()
 
-    # --- INCIDENTS TABLE ---
-    st.subheader(f"🚨 Incident Log ({len(filtered)} records)")
+# --- FILTERS ---
+st.subheader("🔍 Filter Incidents")
 
-    display_df = filtered[[
-        'timestamp', 'ip_address', 'platform',
-        'violation', 'severity', 'snippet', 'status'
-    ]]
+# Initialize filter defaults in session state
+if "severity_filter" not in st.session_state:
+    st.session_state.severity_filter = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+if "platform_filter" not in st.session_state:
+    platform_options = df['platform'].dropna().unique().tolist()
+    st.session_state.platform_filter = platform_options
+if "violation_filter" not in st.session_state:
+    violation_options = df['violation'].dropna().unique().tolist()
+    st.session_state.violation_filter = violation_options
 
-    styled = display_df.style.map(
-        severity_color, subset=['severity']
+# Get unique values (in case new violations appear)
+platform_options = df['platform'].dropna().unique().tolist()
+violation_options = df['violation'].dropna().unique().tolist()
+
+f1, f2, f3 = st.columns(3)
+
+with f1:
+    st.multiselect(
+        "Severity",
+        options=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+        default=st.session_state.severity_filter,
+        key="severity_filter"
+    )
+with f2:
+    st.multiselect(
+        "Platform",
+        options=platform_options,
+        default=st.session_state.platform_filter,
+        key="platform_filter"
+    )
+with f3:
+    st.multiselect(
+        "Violation Type",
+        options=violation_options,
+        default=st.session_state.violation_filter,
+        key="violation_filter"
     )
 
-    st.dataframe(styled, use_container_width=True, height=400)
+# Apply filters
+filtered = df[
+    df['severity'].isin(st.session_state.severity_filter) &
+    df['platform'].isin(st.session_state.platform_filter) &
+    df['violation'].isin(st.session_state.violation_filter)
+]
 
-    st.divider()
+st.divider()
 
-    # --- EXPORT ---
-    csv = filtered.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Export Incidents as CSV",
-        data=csv,
-        file_name=f"incidents_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime='text/csv'
-    )
+# --- CHARTS ---
+st.subheader("📊 Analytics")
+c1, c2 = st.columns(2)
 
-    # --- AUTO REFRESH ---
-    st.caption("⏱️ Auto-refreshing every 30 seconds...")
-    time.sleep(30)
-    st.rerun()
+with c1:
+    st.markdown("**Violations by Type**")
+    # Get top 10 violation types
+    violation_counts = filtered['violation'].value_counts().head(10)
+    if not violation_counts.empty:
+        st.bar_chart(violation_counts)
+    else:
+        st.info("No data for selected filters")
 
-if __name__ == "__main__":
-    main()
+with c2:
+    st.markdown("**Violations by Platform**")
+    platform_counts = filtered['platform'].value_counts()
+    if not platform_counts.empty:
+        st.bar_chart(platform_counts)
+    else:
+        st.info("No data for selected filters")
+
+st.divider()
+
+# --- INCIDENTS TABLE ---
+st.subheader(f"🚨 Incident Log ({len(filtered)} records)")
+
+# Prepare display columns
+display_columns = ['timestamp', 'ip_address', 'platform', 'violation', 'severity', 'snippet', 'status']
+available_cols = [col for col in display_columns if col in filtered.columns]
+display_df = filtered[available_cols].copy()
+
+# Format timestamp for better display
+if 'timestamp' in display_df.columns:
+    display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+# Apply severity styling
+styled = display_df.style.map(severity_color, subset=['severity'])
+
+st.dataframe(styled, use_container_width=True, height=500)
+
+st.divider()
+
+# --- EXPORT ---
+csv = filtered.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="📥 Export Incidents as CSV",
+    data=csv,
+    file_name=f"incidents_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+    mime='text/csv'
+)
+
+# --- AUTO-REFRESH TIP (Not automatic - user controlled) ---
+st.divider()
+st.caption("💡 **Tip:** Click the 'Refresh Data' button at the top to see new incidents from the SOC server.")
+st.caption("🔒 **Data Persistence:** All incident data is stored securely on the backend server. Dashboard refreshes will never erase your data.")
