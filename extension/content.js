@@ -1,16 +1,31 @@
 // ============================================
 // GENAI GUARD - content.js
-// Core DLP Detection Engine - Fixed Version
+// Core DLP Detection Engine - Complete Fix
 // ============================================
 console.log("🛡️ GenAI Guard: CONNECTED & ACTIVE.");
 
 // ============================================
-// PART A: EXTENSION CONTEXT VALIDATION
+// PART A: SAFE CHROME API WRAPPER
 // ============================================
-function isExtensionContextValid() {
+function safeChromeCall(callback, fallback = null) {
     try {
-        return !!(chrome.runtime && chrome.runtime.id);
-    } catch(e) {
+        // Check if chrome.runtime exists and has an id
+        if (!chrome || !chrome.runtime || !chrome.runtime.id) {
+            console.log("Extension context invalid - skipping Chrome API call");
+            return fallback;
+        }
+        return callback();
+    } catch (e) {
+        console.log("Chrome API call failed:", e.message);
+        return fallback;
+    }
+}
+
+// Check if extension is alive
+function isExtensionAlive() {
+    try {
+        return !!(chrome && chrome.runtime && chrome.runtime.id);
+    } catch (e) {
         return false;
     }
 }
@@ -73,7 +88,6 @@ alertBox.style.display = "none";
 document.body.appendChild(alertBox);
 
 function showAlert(severity, violationName) {
-    if (!isExtensionContextValid()) return;
     const style = severityStyles[severity];
     alertBox.className = `genai-guard-alert severity-${severity.toLowerCase()}`;
     alertBox.innerHTML = `
@@ -101,7 +115,7 @@ function hideAlert() {
 // ============================================
 async function getPublicIP() {
     try {
-        const res  = await fetch("https://api.ipify.org?format=json");
+        const res = await fetch("https://api.ipify.org?format=json");
         const data = await res.json();
         return data.ip;
     } catch {
@@ -110,66 +124,60 @@ async function getPublicIP() {
 }
 
 // ============================================
-// PART F: UPDATE POPUP COUNTER (FIXED)
+// PART F: UPDATE POPUP COUNTER (SAFE)
 // ============================================
 function updatePopupCounter(violation, severity) {
-    // ✅ Extension context validation
-    if (!isExtensionContextValid()) {
-        console.log("Extension context invalid - skipping counter update");
+    // SAFE: Check if extension is alive first
+    if (!isExtensionAlive()) {
+        console.log("Extension not alive - skipping counter update");
         return;
     }
     
-    if (typeof chrome === 'undefined' || !chrome.storage) return;
-    const sev = severity.toLowerCase();
-    chrome.storage.local.get(
-        ["threatCount", "critical", "high", "medium", "low"],
-        (result) => {
-            if (chrome.runtime.lastError) {
-                console.log("Storage error:", chrome.runtime.lastError);
-                return;
-            }
-            let update = {
-                threatCount: (result.threatCount || 0) + 1,
-                critical:    (result.critical    || 0),
-                high:        (result.high        || 0),
-                medium:      (result.medium      || 0),
-                low:         (result.low         || 0),
-                lastIncident: {
-                    violation: violation,
-                    severity:  severity,
-                    time:      new Date().toLocaleTimeString()
+    safeChromeCall(() => {
+        const sev = severity.toLowerCase();
+        chrome.storage.local.get(
+            ["threatCount", "critical", "high", "medium", "low"],
+            (result) => {
+                if (chrome.runtime.lastError) {
+                    console.log("Storage error:", chrome.runtime.lastError);
+                    return;
                 }
-            };
-            update[sev] = (result[sev] || 0) + 1;
-            chrome.storage.local.set(update, () => {
-                console.log(`✅ Counter updated: [${severity}] ${violation}`);
-            });
-        }
-    );
+                let update = {
+                    threatCount: (result.threatCount || 0) + 1,
+                    critical:    (result.critical    || 0),
+                    high:        (result.high        || 0),
+                    medium:      (result.medium      || 0),
+                    low:         (result.low         || 0),
+                    lastIncident: {
+                        violation: violation,
+                        severity:  severity,
+                        time:      new Date().toLocaleTimeString()
+                    }
+                };
+                update[sev] = (result[sev] || 0) + 1;
+                chrome.storage.local.set(update, () => {
+                    console.log(`✅ Counter updated: [${severity}] ${violation}`);
+                });
+            }
+        );
+    });
 }
 
 // ============================================
-// PART G: SOC REPORTING (FIXED)
+// PART G: SOC REPORTING (SAFE)
 // ============================================
 async function reportToSOC(text, violation, severity) {
     console.log(`📡 Reporting to SOC: [${severity}] ${violation}`);
 
-    // Only update counter if extension context is valid
-    if (isExtensionContextValid()) {
+    // Only update counter if extension is alive
+    if (isExtensionAlive()) {
         updatePopupCounter(violation, severity);
     }
 
-    let publicIP = "Unavailable";
-    try {
-        const res  = await fetch("https://api.ipify.org?format=json");
-        const data = await res.json();
-        publicIP   = data.ip;
-    } catch {
-        publicIP = "Unavailable";
-    }
+    let publicIP = await getPublicIP();
 
     try {
-        await fetch("https://genai-guard.onrender.com/log", {
+        const response = await fetch("https://genai-guard.onrender.com/log", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -185,9 +193,14 @@ async function reportToSOC(text, violation, severity) {
                 timestamp:  new Date().toISOString()
             })
         });
-        console.log(`✅ SOC Report Sent [${severity}]: ${violation}`);
-    } catch {
-        console.warn("⚠️ SOC Server Offline — report skipped");
+        
+        if (response.ok) {
+            console.log(`✅ SOC Report Sent [${severity}]: ${violation}`);
+        } else {
+            console.warn(`⚠️ SOC Server returned ${response.status}`);
+        }
+    } catch (error) {
+        console.warn("⚠️ SOC Server Offline — report skipped", error.message);
     }
 }
 
@@ -238,7 +251,7 @@ function setupMutationObserver() {
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             const target = mutation.target;
-            if (target.isContentEditable) {
+            if (target && target.isContentEditable) {
                 const text = target.innerText || "";
                 const trimmedText = text.slice(-500);
                 if (trimmedText.length > 0) {
@@ -285,8 +298,10 @@ window.addEventListener('keydown', (e) => {
         const severity     = getHighestSeverity(lastMatchedPatterns);
         const topViolation = lastMatchedPatterns.find(p => p.severity === severity);
 
-        reportToSOC(text, topViolation.name, severity);
-        alert(`🛑 BLOCKED [${severity}]: ${topViolation.name} detected.\nIncident reported to SOC.`);
+        if (topViolation) {
+            reportToSOC(text, topViolation.name, severity);
+            alert(`🛑 BLOCKED [${severity}]: ${topViolation.name} detected.\nIncident reported to SOC.`);
+        }
     }
 }, true);
 
@@ -303,8 +318,10 @@ document.addEventListener('click', (e) => {
         const topViolation = lastMatchedPatterns.find(p => p.severity === severity);
         const text         = document.activeElement?.value || document.activeElement?.innerText || "";
 
-        reportToSOC(text, topViolation.name, severity);
-        alert(`🛑 BLOCKED [${severity}]: ${topViolation.name} detected.\nIncident reported to SOC.`);
+        if (topViolation) {
+            reportToSOC(text, topViolation.name, severity);
+            alert(`🛑 BLOCKED [${severity}]: ${topViolation.name} detected.\nIncident reported to SOC.`);
+        }
     }
 }, true);
 
@@ -323,6 +340,7 @@ function showScanningIndicator(message) {
             font-family: sans-serif; font-size: 13px;
             font-weight: 600; z-index: 999999;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 999999;
         `;
         document.body.appendChild(indicator);
     }
@@ -335,7 +353,6 @@ function hideScanningIndicator() {
     if (el) el.style.display = 'none';
 }
 
-// Convert file to base64
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -345,7 +362,6 @@ function fileToBase64(file) {
     });
 }
 
-// Helper — report image threat to SOC
 function reportImageThreat(source) {
     const severity     = getHighestSeverity(lastMatchedPatterns);
     const topViolation = lastMatchedPatterns.find(p => p.severity === severity);
@@ -356,7 +372,6 @@ function reportImageThreat(source) {
     );
 }
 
-// Google Vision OCR Scanner
 async function scanImage(file) {
     try {
         showScanningIndicator("🔍 Scanning image for sensitive data...");
@@ -375,7 +390,7 @@ async function scanImage(file) {
         const data = await response.json();
         const text = data.text || "";
 
-        console.log("📄 Google Vision OCR:", text);
+        console.log("📄 Google Vision OCR:", text.substring(0, 100));
         hideScanningIndicator();
 
         return checkTextForThreats(text, "IMAGE_UPLOAD");
@@ -388,7 +403,7 @@ async function scanImage(file) {
 }
 
 // ============================================
-// PART K: FILE UPLOAD CLICK INTERCEPTION
+// PART K: FILE UPLOAD INTERCEPTION
 // ============================================
 let isOurPickerActive = false;
 
@@ -444,7 +459,6 @@ document.addEventListener('click', async (e) => {
     isOurPickerActive = true;
     ourPicker.click();
     isOurPickerActive = false;
-
 }, true);
 
 // Paste image (Ctrl+V)
@@ -460,7 +474,7 @@ document.addEventListener('paste', async (event) => {
             const threat = await scanImage(file);
             if (threat) {
                 reportImageThreat("paste");
-                alert(`🛑 BLOCKED: Sensitive data detected in pasted image.\nIncident reported to SOC.`);
+                alert(`🛑 BLOCKED: Sensitive data detected in pasted image.`);
             }
             break;
         }
@@ -479,18 +493,15 @@ document.addEventListener('drop', async (event) => {
         const threat = await scanImage(file);
         if (threat) {
             reportImageThreat("drop");
-            alert(`🛑 BLOCKED: Sensitive data detected in dropped image.\nIncident reported to SOC.`);
+            alert(`🛑 BLOCKED: Sensitive data detected in dropped image.`);
         }
     }
 }, true);
 
 // ============================================
-// PART L: KEEP RENDER SERVER ALIVE (FIXED)
+// PART L: KEEP RENDER SERVER ALIVE
 // ============================================
 function pingServer() {
-    // ✅ Extension context validation
-    if (!isExtensionContextValid()) return;
-    
     fetch("https://genai-guard.onrender.com/health")
         .then(() => console.log("🟢 Render server pinged"))
         .catch(() => console.log("🔴 Render server sleeping"));
@@ -499,18 +510,7 @@ function pingServer() {
 // Ping on page load
 pingServer();
 
-// Store interval ID for cleanup
-window._pingInterval = setInterval(pingServer, 10 * 60 * 1000);
+// Ping every 10 minutes
+setInterval(pingServer, 10 * 60 * 1000);
 
-// ============================================
-// PART M: CLEANUP ON CONTEXT INVALIDATION
-// ============================================
-window.addEventListener('unload', () => {
-    if (typeof chrome !== 'undefined' && chrome.runtime && !chrome.runtime.id) {
-        console.log("Extension context invalidated - cleaning up");
-        if (window._pingInterval) {
-            clearInterval(window._pingInterval);
-            window._pingInterval = null;
-        }
-    }
-});
+console.log("✅ GenAI Guard fully loaded and ready!");
