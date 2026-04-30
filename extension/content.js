@@ -18,7 +18,7 @@ const sensitivePatterns = [
     { name: "Google Key",      regex: /AIza[0-9A-Za-z\-_]{35}/,                           severity: "HIGH" },
     { name: "Credit Card",     regex: /\b(?:\d[ -]?){13,16}\b/,                           severity: "HIGH" },
     { name: "Internal IP",     regex: /(192\.168\.\d{1,3}|10\.\d{1,3}\.\d{1,3})/,        severity: "HIGH" },
-    { name: "Bank Account",    regex: /\b[0-9]{9,18}\b/,                                  severity: "HIGH" },
+    { name: "Bank Account", regex: /\b[0-9]{11,18}\b/, severity: "HIGH" },
     { name: "IFSC Code",       regex: /\b[A-Z]{4}0[A-Z0-9]{6}\b/,                        severity: "HIGH" },
     { name: "Passport Number", regex: /\b[A-Z][1-9][0-9]{7}\b/,                          severity: "HIGH" },
 
