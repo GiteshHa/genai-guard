@@ -5,12 +5,12 @@ import os
 import json
 import tempfile
 from datetime import datetime
-import smtplib
 import base64
 import hmac
 import threading
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import urllib.request
+import urllib.error
+import json as json_lib
 
 # Load .env only if running locally
 try:
@@ -27,13 +27,13 @@ DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audit_logs.d
 API_KEY  = os.getenv("SOC_API_KEY")
 
 # Email config
-EMAIL_SENDER   = os.getenv("ALERT_EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("ALERT_EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("ALERT_EMAIL_RECEIVER")
+EMAIL_SENDER      = os.getenv("ALERT_EMAIL_SENDER")
+EMAIL_RECEIVER    = os.getenv("ALERT_EMAIL_RECEIVER")
+SENDGRID_API_KEY  = os.getenv("SENDGRID_API_KEY")
 
 print(f"📧 Email Sender: {EMAIL_SENDER}")
 print(f"📧 Email Receiver: {EMAIL_RECEIVER}")
-print(f"📧 Email Password set: {'Yes' if EMAIL_PASSWORD else 'No'}")
+print(f"📧 SendGrid API Key set: {'Yes' if SENDGRID_API_KEY else 'No'}")
 print(f"🔑 SOC API key configured: {'Yes' if API_KEY else 'No'}")
 
 # Google Vision credentials
@@ -96,12 +96,12 @@ def is_request_authorized():
 
 # --- EMAIL ALERT ---
 def send_email_alert(entry):
-    if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
-        print("⚠️ Email not configured — skipping alert", flush=True)
+    if not SENDGRID_API_KEY or not EMAIL_SENDER or not EMAIL_RECEIVER:
+        print("⚠️ SendGrid not configured — skipping alert", flush=True)
         return False
 
     import time
-    time.sleep(2)  # Brief delay to ensure network is ready after deploy
+    time.sleep(2)
 
     sev  = entry['severity']
     viol = entry['violation']
@@ -114,46 +114,52 @@ def send_email_alert(entry):
 
     subject = f"🚨 GenAI Guard Alert [{sev}]: {viol} Detected"
     body = f"""
-    GenAI Guard — SOC Incident Alert
+GenAI Guard — SOC Incident Alert
 
-    SEVERITY   : {sev}
-    VIOLATION  : {viol}
-    PLATFORM   : {plat}
-    IP ADDRESS : {ip}
-    TIMESTAMP  : {ts}
-    SNIPPET    : {snip}
-    USER AGENT : {ua}
-    STATUS     : {st}
+SEVERITY   : {sev}
+VIOLATION  : {viol}
+PLATFORM   : {plat}
+IP ADDRESS : {ip}
+TIMESTAMP  : {ts}
+SNIPPET    : {snip}
+USER AGENT : {ua}
+STATUS     : {st}
 
-    Action Required: Please investigate immediately.
-    Login to SOC Dashboard for full details.
-    GenAI Guard | Automated Security Alert
+Action Required: Please investigate immediately.
+Login to SOC Dashboard for full details.
+GenAI Guard | Automated Security Alert
     """
 
-    msg = MIMEMultipart()
-    msg['From']    = EMAIL_SENDER
-    msg['To']      = EMAIL_RECEIVER
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
+    payload = json_lib.dumps({
+        "personalizations": [{"to": [{"email": EMAIL_RECEIVER}]}],
+        "from": {"email": EMAIL_SENDER, "name": "GenAI Guard SOC"},
+        "subject": subject,
+        "content": [{"type": "text/plain", "value": body}]
+    }).encode("utf-8")
 
     for attempt in range(3):
         try:
-            with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-                server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
-            print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}", flush=True)
-            return True
-        except smtplib.SMTPAuthenticationError:
-            print("❌ Email Auth Failed — check App Password", flush=True)
+            req = urllib.request.Request(
+                "https://api.sendgrid.com/v3/mail/send",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                print(f"📧 Email Alert Sent via SendGrid to {EMAIL_RECEIVER} (status {resp.status})", flush=True)
+                return True
+        except urllib.error.HTTPError as e:
+            body_err = e.read().decode()
+            print(f"❌ SendGrid HTTP Error {e.code}: {body_err}", flush=True)
             return False
         except Exception as e:
-            print(f"❌ Email Error attempt {attempt+1}/3: {e}", flush=True)
+            print(f"❌ SendGrid Error attempt {attempt+1}/3: {e}", flush=True)
             time.sleep(5)
 
-    print("❌ Email failed after 3 attempts", flush=True)
+    print("❌ SendGrid failed after 3 attempts", flush=True)
     return False
 
 
