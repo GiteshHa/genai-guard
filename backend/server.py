@@ -130,14 +130,19 @@ def send_email_alert(entry):
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
 
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20) as server:
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
 
-        print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}")
+        print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}", flush=True)
+        return True
 
+    except smtplib.SMTPAuthenticationError:
+        print("❌ Email Auth Failed — check App Password", flush=True)
+        return False
     except Exception as e:
-        print(f"❌ Email Error: {e}")
+        print(f"❌ Email Error: {e}", flush=True)
+        return False
 
 # --- MAIN LOGGING ENDPOINT ---
 @app.route('/log', methods=['POST'])
@@ -176,10 +181,10 @@ def log_threat():
         print(f"🚨 INCIDENT LOGGED [{entry['severity']}]: {entry['violation']} from {ip_address}")
 
         if entry['severity'] in ["CRITICAL", "HIGH"]:
-            # Send email in background thread so it never blocks the HTTP response
-            email_thread = threading.Thread(target=send_email_alert, args=(entry,), daemon=True)
+            # Send email in non-daemon thread so Render does not kill it
+            email_thread = threading.Thread(target=send_email_alert, args=(entry,), daemon=False)
             email_thread.start()
-            print(f"📧 Email thread started for [{entry['severity']}] incident")
+            print(f"📧 Email thread started for [{entry[chr(39)+'severity'+chr(39)]}] incident", flush=True)
 
         return jsonify({"status": "logged", "severity": entry['severity']}), 200
 
