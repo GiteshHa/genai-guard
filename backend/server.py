@@ -97,55 +97,65 @@ def is_request_authorized():
 # --- EMAIL ALERT ---
 def send_email_alert(entry):
     if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
-        print("⚠️ Email not configured — skipping alert")
-        return
-
-    try:
-        subject = f"🚨 GenAI Guard Alert [{entry['severity']}]: {entry['violation']} Detected"
-
-        body = f"""
-        ╔══════════════════════════════════════╗
-              GenAI Guard — SOC Incident Alert
-        ╚══════════════════════════════════════╝
-
-        🚨 SEVERITY    : {entry['severity']}
-        📋 VIOLATION   : {entry['violation']}
-        🌐 PLATFORM    : {entry['platform']}
-        🖥️  IP ADDRESS  : {entry['ip_address']}
-        ⏰ TIMESTAMP   : {entry['timestamp']}
-        📝 SNIPPET     : {entry['snippet']}
-        🔍 USER AGENT  : {entry['user_agent']}
-        📌 STATUS      : {entry['status']}
-
-        ──────────────────────────────────────
-        Action Required: Please investigate immediately.
-        Login to SOC Dashboard for full details.
-        ──────────────────────────────────────
-        GenAI Guard | Automated Security Alert
-        """
-
-        msg = MIMEMultipart()
-        msg['From']    = EMAIL_SENDER
-        msg['To']      = EMAIL_RECEIVER
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
-
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
-
-        print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}", flush=True)
-        return True
-
-    except smtplib.SMTPAuthenticationError:
-        print("❌ Email Auth Failed — check App Password", flush=True)
+        print("⚠️ Email not configured — skipping alert", flush=True)
         return False
-    except Exception as e:
-        print(f"❌ Email Error: {e}", flush=True)
-        return False
+
+    import time
+    time.sleep(2)  # Brief delay to ensure network is ready after deploy
+
+    sev  = entry['severity']
+    viol = entry['violation']
+    plat = entry['platform']
+    ip   = entry['ip_address']
+    ts   = entry['timestamp']
+    snip = entry['snippet']
+    ua   = entry['user_agent']
+    st   = entry['status']
+
+    subject = f"🚨 GenAI Guard Alert [{sev}]: {viol} Detected"
+    body = f"""
+    GenAI Guard — SOC Incident Alert
+
+    SEVERITY   : {sev}
+    VIOLATION  : {viol}
+    PLATFORM   : {plat}
+    IP ADDRESS : {ip}
+    TIMESTAMP  : {ts}
+    SNIPPET    : {snip}
+    USER AGENT : {ua}
+    STATUS     : {st}
+
+    Action Required: Please investigate immediately.
+    Login to SOC Dashboard for full details.
+    GenAI Guard | Automated Security Alert
+    """
+
+    msg = MIMEMultipart()
+    msg['From']    = EMAIL_SENDER
+    msg['To']      = EMAIL_RECEIVER
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    for attempt in range(3):
+        try:
+            with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+                server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+            print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}", flush=True)
+            return True
+        except smtplib.SMTPAuthenticationError:
+            print("❌ Email Auth Failed — check App Password", flush=True)
+            return False
+        except Exception as e:
+            print(f"❌ Email Error attempt {attempt+1}/3: {e}", flush=True)
+            time.sleep(5)
+
+    print("❌ Email failed after 3 attempts", flush=True)
+    return False
+
 
 # --- MAIN LOGGING ENDPOINT ---
 @app.route('/log', methods=['POST'])
