@@ -38,30 +38,45 @@ let socConfigCache = {
 
 function getSocConfig() {
     return new Promise((resolve) => {
-        let resolved = false;
-        const done = (value) => {
-            if (!resolved) {
-                resolved = true;
-                resolve(value);
-            }
-        };
-
-        safeChromeCall(() => {
+        // If chrome APIs are unavailable, fall back to cached defaults.
+        if (!isExtensionAlive()) {
+            resolve(socConfigCache);
+            return;
+        }
+        try {
             chrome.storage.local.get(["socApiBaseUrl", "socApiKey"], (result) => {
-                socConfigCache = {
+                if (chrome.runtime.lastError) {
+                    console.warn("⚠️ Failed to read SOC config:", chrome.runtime.lastError.message);
+                    resolve(socConfigCache);
+                    return;
+                }
+
+                const directConfig = {
                     baseUrl: result.socApiBaseUrl || DEFAULT_SOC_BASE_URL,
                     apiKey: result.socApiKey || ""
                 };
-                done(socConfigCache);
+                if (directConfig.apiKey) {
+                    socConfigCache = directConfig;
+                    resolve(socConfigCache);
+                    return;
+                }
+
+                chrome.runtime.sendMessage({ action: "GET_SOC_CONFIG" }, (response) => {
+                    if (chrome.runtime.lastError || !response?.ok) {
+                        resolve(directConfig);
+                        return;
+                    }
+                    socConfigCache = {
+                        baseUrl: response.config.baseUrl || DEFAULT_SOC_BASE_URL,
+                        apiKey: response.config.apiKey || ""
+                    };
+                    resolve(socConfigCache);
+                });
             });
-        });
-
-        // If chrome APIs are unavailable, fall back to cached defaults.
-        if (!isExtensionAlive()) {
-            done(socConfigCache);
+        } catch (error) {
+            console.warn("⚠️ Exception while reading SOC config:", error?.message || error);
+            resolve(socConfigCache);
         }
-
-        setTimeout(() => done(socConfigCache), 250);
     });
 }
 
@@ -79,13 +94,15 @@ const sensitivePatterns = [
     { name: "Google Key",      regex: /AIza[0-9A-Za-z\-_]{35}/,                           severity: "HIGH" },
     { name: "Credit Card",     regex: /\b(?:\d[ -]?){13,16}\b/,                           severity: "HIGH" },
     { name: "Internal IP",     regex: /(192\.168\.\d{1,3}|10\.\d{1,3}\.\d{1,3})/,        severity: "HIGH" },
-    { name: "Bank Account",    regex: /\b[0-9]{11,18}\b/,                                 severity: "HIGH" },
+    // Bank Account: 9–18 digits, but NOT exactly 12 digits (those are Aadhaar) and NOT spaces (Aadhaar uses spaces)
+    { name: "Bank Account",    regex: /\b(?!(\d{4}\s\d{4}\s\d{4}|\d{12})\b)[0-9]{9,18}\b/, severity: "HIGH" },
     { name: "IFSC Code",       regex: /\b[A-Z]{4}0[A-Z0-9]{6}\b/,                        severity: "HIGH" },
     { name: "Passport Number", regex: /\b[A-Z][1-9][0-9]{7}\b/,                          severity: "HIGH" },
 
     // MEDIUM
     { name: "Financial",       regex: /(salary|payroll|budget|revenue|\$\d{3,})/i,         severity: "MEDIUM" },
-    { name: "Aadhaar",         regex: /\b[2-9]{1}\d{3}\s?\d{4}\s?\d{4}\b/,               severity: "MEDIUM" },
+    // Aadhaar: exactly 12 digits starting with 2-9, optionally space-separated in groups of 4
+    { name: "Aadhaar",         regex: /\b[2-9]\d{3}\s?\d{4}\s?\d{4}\b/,                  severity: "MEDIUM" },
     { name: "PAN Card",        regex: /\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/,                    severity: "MEDIUM" },
     { name: "GST Number",      regex: /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/, severity: "MEDIUM" },
     { name: "Driving License", regex: /\b[A-Z]{2}[0-9]{2}[0-9]{11}\b/,                   severity: "MEDIUM" },
@@ -204,6 +221,9 @@ function updatePopupCounter(violation, severity) {
 async function reportToSOC(text, violation, severity) {
     console.log(`📡 Reporting to SOC: [${severity}] ${violation}`);
 
+    // Deduplicate — skip if same violation reported within 10 seconds
+    if (isDuplicate(violation, severity, text)) return;
+
     // Only update counter if extension is alive
     if (isExtensionAlive()) {
         updatePopupCounter(violation, severity);
@@ -211,6 +231,9 @@ async function reportToSOC(text, violation, severity) {
 
     let publicIP = await getPublicIP();
     const socConfig = await getSocConfig();
+    console.log(
+        `🔧 SOC config loaded: baseUrl=${socConfig.baseUrl}, keyLength=${(socConfig.apiKey || "").length}`
+    );
     if (!socConfig.apiKey) {
         console.warn("⚠️ SOC API key not configured — report skipped");
         return;
@@ -249,6 +272,23 @@ async function reportToSOC(text, violation, severity) {
 // ============================================
 let isThreatDetected    = false;
 let lastMatchedPatterns = [];
+
+// Deduplication: track last reported incident key + timestamp
+let lastReportedKey  = "";
+let lastReportedTime = 0;
+const DEDUP_WINDOW_MS = 10000; // 10 seconds
+
+function isDuplicate(violation, severity, snippet) {
+    const key = `${violation}|${severity}|${snippet.substring(0, 50)}`;
+    const now  = Date.now();
+    if (key === lastReportedKey && (now - lastReportedTime) < DEDUP_WINDOW_MS) {
+        console.log("⏭️ Duplicate incident suppressed:", key);
+        return true;
+    }
+    lastReportedKey  = key;
+    lastReportedTime = now;
+    return false;
+}
 
 function checkTextForThreats(text, source = "TEXT_INPUT") {
     const matched = sensitivePatterns.filter(p => p.regex.test(text));
@@ -416,6 +456,9 @@ async function scanImage(file) {
     try {
         showScanningIndicator("🔍 Scanning image for sensitive data...");
         const socConfig = await getSocConfig();
+        console.log(
+            `🔧 SOC image config loaded: baseUrl=${socConfig.baseUrl}, keyLength=${(socConfig.apiKey || "").length}`
+        );
         if (!socConfig.apiKey) {
             console.warn("⚠️ SOC API key not configured — image scan skipped");
             hideScanningIndicator();

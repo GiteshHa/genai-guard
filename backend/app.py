@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import time
 import os
+from streamlit_autorefresh import st_autorefresh
 
 # --- PAGE CONFIG (MUST BE FIRST) ---
 st.set_page_config(
@@ -77,6 +78,14 @@ def refresh_data():
 # --- MAIN UI ---
 st.title("🛡️ GenAI Guard — SOC Threat Triage Center")
 st.caption("Real-time monitoring of sensitive data violations across AI platforms")
+
+# --- AUTO-REFRESH every 30 seconds ---
+refresh_count = st_autorefresh(interval=30_000, key="auto_refresh")
+
+# On every auto-refresh tick, reload data silently
+if refresh_count > 0:
+    st.session_state.incident_data = load_logs_from_api()
+    st.session_state.last_refresh  = time.strftime("%Y-%m-%d %H:%M:%S")
 
 # --- REFRESH CONTROLS (Top of Dashboard) ---
 col_refresh, col_status = st.columns([1, 4])

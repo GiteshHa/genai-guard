@@ -18,6 +18,7 @@
     "*://*.claude.ai/*",
     "*://*.copilot.microsoft.com/*",
     "*://*.perplexity.ai/*",
+    "https://genai-guard.onrender.com/*",
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],

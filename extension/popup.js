@@ -9,6 +9,14 @@ function updateUI(data) {
     document.getElementById('count-medium').innerText   = data.medium   || 0;
     document.getElementById('count-low').innerText      = data.low      || 0;
 
+    // Show total incident count in header if element exists
+    const totalEl = document.getElementById('count-total');
+    if (totalEl) {
+        const total = (data.critical || 0) + (data.high || 0) +
+                      (data.medium   || 0) + (data.low  || 0);
+        totalEl.innerText = `${total} Total Incidents`;
+    }
+
     const lastEl = document.getElementById('last-incident-text');
     if (data.lastIncident && data.lastIncident.violation) {
         lastEl.innerText = `${data.lastIncident.violation} [${data.lastIncident.severity}] at ${data.lastIncident.time}`;
@@ -34,43 +42,39 @@ function setConfigStatus(message, isError = false) {
 }
 
 function loadSocConfig() {
-    chrome.storage.local.get(["socApiBaseUrl", "socApiKey"], (result) => {
-        document.getElementById("soc-base-url").value =
-            result.socApiBaseUrl || "https://genai-guard.onrender.com";
+    chrome.storage.local.get(["socApiKey"], (result) => {
         document.getElementById("soc-api-key").value = result.socApiKey || "";
-        setConfigStatus("SOC settings loaded.");
+        setConfigStatus(result.socApiKey ? "SOC settings loaded." : "⚠️ API key not set.");
     });
 }
 
 function saveSocConfig() {
-    const baseUrl = document.getElementById("soc-base-url").value.trim();
     const apiKey = document.getElementById("soc-api-key").value.trim();
 
-    if (!baseUrl) {
-        setConfigStatus("Base URL is required.", true);
-        return;
-    }
-
-    try {
-        new URL(baseUrl);
-    } catch (_err) {
-        setConfigStatus("Enter a valid URL (http://... or https://...).", true);
+    if (!apiKey) {
+        setConfigStatus("API key is required.", true);
         return;
     }
 
     chrome.storage.local.set(
-        {
-            socApiBaseUrl: baseUrl,
-            socApiKey: apiKey
-        },
+        { socApiKey: apiKey },
         () => {
-            setConfigStatus("SOC settings saved.");
+            setConfigStatus("✅ SOC settings saved.");
+        }
+    );
+}
+
+function resetStats() {
+    chrome.storage.local.set(
+        { critical: 0, high: 0, medium: 0, low: 0, threatCount: 0, lastIncident: null },
+        () => {
+            loadStats();
+            setConfigStatus("Stats reset.");
         }
     );
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Load immediately
     loadStats();
     loadSocConfig();
 
@@ -84,4 +88,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById("save-config").addEventListener("click", saveSocConfig);
+
+    // Reset button (optional — only wire if element exists)
+    const resetBtn = document.getElementById("reset-stats");
+    if (resetBtn) resetBtn.addEventListener("click", resetStats);
 });
