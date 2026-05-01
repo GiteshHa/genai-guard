@@ -184,7 +184,8 @@ def log_threat():
             # Send email in non-daemon thread so Render does not kill it
             email_thread = threading.Thread(target=send_email_alert, args=(entry,), daemon=False)
             email_thread.start()
-            print(f"📧 Email thread started for [{entry[chr(39)+'severity'+chr(39)]}] incident", flush=True)
+            sev = entry['severity']
+            print(f"📧 Email thread started for [{sev}] incident", flush=True)
 
         return jsonify({"status": "logged", "severity": entry['severity']}), 200
 
