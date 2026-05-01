@@ -8,6 +8,7 @@ from datetime import datetime
 import smtplib
 import base64
 import hmac
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -96,8 +97,8 @@ def is_request_authorized():
 # --- EMAIL ALERT ---
 def send_email_alert(entry):
     if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
-        print("⚠️ Email not configured — skipping alert. Set ALERT_EMAIL_SENDER, ALERT_EMAIL_PASSWORD, ALERT_EMAIL_RECEIVER.")
-        return False
+        print("⚠️ Email not configured — skipping alert")
+        return
 
     try:
         subject = f"🚨 GenAI Guard Alert [{entry['severity']}]: {entry['violation']} Detected"
@@ -134,17 +135,9 @@ def send_email_alert(entry):
             server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
 
         print(f"📧 Email Alert Sent to {EMAIL_RECEIVER}")
-        return True
 
-    except smtplib.SMTPAuthenticationError:
-        print(f"❌ Email Auth Failed — check ALERT_EMAIL_SENDER and ALERT_EMAIL_PASSWORD (use Gmail App Password, not account password)")
-        return False
-    except smtplib.SMTPException as e:
-        print(f"❌ SMTP Error: {e}")
-        return False
     except Exception as e:
         print(f"❌ Email Error: {e}")
-        return False
 
 # --- MAIN LOGGING ENDPOINT ---
 @app.route('/log', methods=['POST'])
@@ -183,11 +176,10 @@ def log_threat():
         print(f"🚨 INCIDENT LOGGED [{entry['severity']}]: {entry['violation']} from {ip_address}")
 
         if entry['severity'] in ["CRITICAL", "HIGH"]:
-            sent = send_email_alert(entry)
-            if sent:
-                print(f"📧 Email alert confirmed sent for [{entry['severity']}] incident")
-            else:
-                print(f"⚠️ Email alert FAILED for [{entry['severity']}] incident — check email config")
+            # Send email in background thread so it never blocks the HTTP response
+            email_thread = threading.Thread(target=send_email_alert, args=(entry,), daemon=True)
+            email_thread.start()
+            print(f"📧 Email thread started for [{entry['severity']}] incident")
 
         return jsonify({"status": "logged", "severity": entry['severity']}), 200
 
@@ -195,28 +187,16 @@ def log_threat():
         print(f"❌ DB Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- GET ALL INCIDENTS (with pagination) ---
+# --- GET ALL INCIDENTS ---
 @app.route('/incidents', methods=['GET'])
 def get_incidents():
     if not is_request_authorized():
         return jsonify({"status": "unauthorized"}), 401
 
-    # Optional pagination params: ?limit=100&offset=0
-    try:
-        limit  = int(request.args.get('limit',  500))
-        offset = int(request.args.get('offset', 0))
-        # Cap max page size to prevent huge payloads
-        limit  = min(limit, 1000)
-    except ValueError:
-        limit, offset = 500, 0
-
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute(
-        'SELECT * FROM incidents ORDER BY timestamp DESC LIMIT ? OFFSET ?',
-        (limit, offset)
-    )
+    c.execute('SELECT * FROM incidents ORDER BY timestamp DESC')
     rows = [dict(row) for row in c.fetchall()]
     conn.close()
     return jsonify(rows), 200
